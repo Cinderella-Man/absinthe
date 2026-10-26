@@ -188,6 +188,7 @@ defmodule Absinthe.Schema.Notation do
   defmacro object(identifier, attrs \\ [], block)
 
   defmacro object(identifier, attrs, do: block) do
+    reserved_identifier!(__CALLER__, identifier)
     block = block_from_directive_attrs(attrs, block)
 
     {attrs, block} =
@@ -2411,6 +2412,23 @@ defmodule Absinthe.Schema.Notation do
         node
     end)
   end
+
+  @reserved_identifiers ~w(query mutation subscription)a
+  # Root objects are defined with `query`, `mutation` and `subscription`; an
+  # `object` may only use their identifiers inside `extend` to extend them.
+  defp reserved_identifier!(env, identifier) when identifier in @reserved_identifiers do
+    case Module.get_attribute(env.module, :absinthe_scope_stack) do
+      [:extend | _] ->
+        env
+
+      _ ->
+        raise Absinthe.Schema.Notation.Error,
+              "Invalid schema notation: cannot create an `object` " <>
+                "with reserved identifier `#{identifier}`"
+    end
+  end
+
+  defp reserved_identifier!(env, _identifier), do: env
 
   @doc false
   # Ensure the provided operation can be recorded in the current environment,

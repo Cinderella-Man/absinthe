@@ -37,28 +37,18 @@ defmodule Absinthe.Phase.Schema.ApplyDeclaration do
 
     case declarations do
       [declaration] ->
-        root_mappings =
-          declaration
-          |> extract_root_mappings
-
         %{
           schema_definition
-          | type_definitions:
-              Enum.map(schema_definition.type_definitions, &maybe_mark_root(&1, root_mappings)),
+          | type_definitions: mark_roots(schema_definition.type_definitions, declaration),
             schema_declaration: declaration
         }
 
       [] ->
         declaration = build_declaration(schema_definition.type_definitions)
 
-        root_mappings =
-          declaration
-          |> extract_root_mappings
-
         %{
           schema_definition
-          | type_definitions:
-              Enum.map(schema_definition.type_definitions, &maybe_mark_root(&1, root_mappings)),
+          | type_definitions: mark_roots(schema_definition.type_definitions, declaration),
             schema_declaration: declaration
         }
 
@@ -80,6 +70,22 @@ defmodule Absinthe.Phase.Schema.ApplyDeclaration do
       locations: [declaration.__reference__.location],
       phase: __MODULE__
     }
+  end
+
+  # Mark the object types named by the declaration as operation roots. Schema
+  # extensions can add operation types, so this also runs once they are applied.
+  @spec mark_roots(
+          type_definitions :: [Blueprint.Schema.t()],
+          declaration :: nil | Blueprint.Schema.SchemaDeclaration.t()
+        ) :: [Blueprint.Schema.t()]
+  def mark_roots(type_definitions, nil), do: type_definitions
+
+  def mark_roots(type_definitions, declaration) do
+    root_mappings =
+      declaration
+      |> extract_root_mappings
+
+    Enum.map(type_definitions, &maybe_mark_root(&1, root_mappings))
   end
 
   # Extract the declared root type names

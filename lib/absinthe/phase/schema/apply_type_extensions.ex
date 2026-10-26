@@ -4,6 +4,7 @@ defmodule Absinthe.Phase.Schema.ApplyTypeExtensions do
   @behaviour Absinthe.Phase
   alias Absinthe.Blueprint
   alias Absinthe.Blueprint.Schema
+  alias Absinthe.Phase.Schema.ApplyDeclaration
 
   @spec run(Blueprint.t(), Keyword.t()) :: {:ok, Blueprint.t()}
   def run(input, _options \\ []) do
@@ -27,6 +28,9 @@ defmodule Absinthe.Phase.Schema.ApplyTypeExtensions do
 
       {[schema_declaration], type_extensions} =
         apply_type_extensions([schema_declaration], type_extensions, [])
+
+      # Operation types added by a schema extension become roots as well
+      type_definitions = ApplyDeclaration.mark_roots(type_definitions, schema_declaration)
 
       %{
         schema_def
