@@ -41,6 +41,15 @@ defmodule Absinthe.Schema.Notation.SDL do
     |> do_put_ref(ref, opts)
   end
 
+  defp put_ref(%{field_definitions: fields, directives: directives} = node, ref, opts) do
+    %{
+      node
+      | field_definitions: Enum.map(fields, &put_ref(&1, ref, opts)),
+        directives: Enum.map(directives, &put_ref(&1, ref, opts))
+    }
+    |> do_put_ref(ref, opts)
+  end
+
   defp put_ref(%{fields: fields} = node, ref, opts) do
     %{node | fields: Enum.map(fields, &put_ref(&1, ref, opts))}
     |> do_put_ref(ref, opts)

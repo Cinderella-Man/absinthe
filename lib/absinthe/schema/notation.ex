@@ -185,16 +185,10 @@ defmodule Absinthe.Schema.Notation do
   end
   ```
   """
-  @reserved_identifiers ~w(query mutation subscription)a
   defmacro object(identifier, attrs \\ [], block)
 
-  defmacro object(identifier, _attrs, _block) when identifier in @reserved_identifiers do
-    raise Absinthe.Schema.Notation.Error,
-          "Invalid schema notation: cannot create an `object` " <>
-            "with reserved identifier `#{identifier}`"
-  end
-
   defmacro object(identifier, attrs, do: block) do
+    reserved_identifier!(__CALLER__, identifier)
     block = block_from_directive_attrs(attrs, block)
 
     {attrs, block} =
@@ -298,6 +292,41 @@ defmodule Absinthe.Schema.Notation do
     __CALLER__
     |> recordable!(:extend, @placement[:extend])
     |> record_extend!([], block, [])
+  end
+
+  defmacro extend({:schema, meta, _}, do: block) do
+    block = {:schema, meta, [] ++ [[do: block]]}
+
+    __CALLER__
+    |> recordable!(:extend, @placement[:extend])
+    |> record_extend!([], block, [])
+  end
+
+  @placement {:schema, [toplevel: true, extend: true]}
+  @doc """
+  Declare a schema
+
+  Optional declaration of the schema. Useful if you want to add directives
+  to your schema declaration
+
+  ## Placement
+
+  #{Utils.placement_docs(@placement)}
+
+  ## Examples
+
+  ```
+  schema do
+    directive :feature
+    field :query, :query
+    # ...
+  end
+  ```
+  """
+  defmacro schema(do: block) do
+    __CALLER__
+    |> recordable!(:schema, @placement[:schema])
+    |> record_schema!(block)
   end
 
   @placement {:deprecate, [under: [:field]]}
@@ -477,7 +506,7 @@ defmodule Absinthe.Schema.Notation do
   end
 
   # FIELDS
-  @placement {:field, [under: [:input_object, :interface, :object]]}
+  @placement {:field, [under: [:input_object, :interface, :object, :schema_declaration]]}
   @doc """
   Defines a GraphQL field
 
@@ -932,6 +961,7 @@ defmodule Absinthe.Schema.Notation do
                   :interface,
                   :object,
                   :scalar,
+                  :schema_declaration,
                   :union,
                   :value
                 ]
@@ -1588,6 +1618,25 @@ defmodule Absinthe.Schema.Notation do
     [
       extend_block,
       type_block,
+      quote(do: unquote(__MODULE__).close_scope())
+    ]
+  end
+
+  def record_schema!(env, block) do
+    attrs =
+      []
+      |> Keyword.put(:module, env.module)
+      |> put_reference(env)
+
+    definition = struct!(Schema.SchemaDeclaration, attrs)
+
+    ref = put_attr(env.module, definition)
+
+    push_stack(env.module, :absinthe_scope_stack, :schema_declaration)
+
+    [
+      get_desc(ref),
+      block,
       quote(do: unquote(__MODULE__).close_scope())
     ]
   end
@@ -2364,6 +2413,23 @@ defmodule Absinthe.Schema.Notation do
     end)
   end
 
+  @reserved_identifiers ~w(query mutation subscription)a
+  # Root objects are defined with `query`, `mutation` and `subscription`; an
+  # `object` may only use their identifiers inside `extend` to extend them.
+  defp reserved_identifier!(env, identifier) when identifier in @reserved_identifiers do
+    case Module.get_attribute(env.module, :absinthe_scope_stack) do
+      [:extend | _] ->
+        env
+
+      _ ->
+        raise Absinthe.Schema.Notation.Error,
+              "Invalid schema notation: cannot create an `object` " <>
+                "with reserved identifier `#{identifier}`"
+    end
+  end
+
+  defp reserved_identifier!(env, _identifier), do: env
+
   @doc false
   # Ensure the provided operation can be recorded in the current environment,
   # in the current scope context
@@ -2381,6 +2447,9 @@ defmodule Absinthe.Schema.Notation do
 
   defp recordable?([toplevel: true, extend: true], scope),
     do: scope == :schema || scope == :extend
+
+  defp recordable?([toplevel: false, extend: true], scope),
+    do: scope == :extend
 
   defp recordable?([toplevel: true], scope), do: scope == :schema
   defp recordable?([toplevel: false], scope), do: scope != :schema

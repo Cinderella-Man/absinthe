@@ -4,6 +4,7 @@ defmodule Absinthe.Phase.Schema.ApplyTypeExtensions do
   @behaviour Absinthe.Phase
   alias Absinthe.Blueprint
   alias Absinthe.Blueprint.Schema
+  alias Absinthe.Phase.Schema.ApplyDeclaration
 
   @spec run(Blueprint.t(), Keyword.t()) :: {:ok, Blueprint.t()}
   def run(input, _options \\ []) do
@@ -16,14 +17,25 @@ defmodule Absinthe.Phase.Schema.ApplyTypeExtensions do
   end
 
   def update_schema_defs(schema_definitions) do
-    for schema_def = %{type_definitions: type_definitions, type_extensions: type_extensions} <-
+    for schema_def = %{
+          type_definitions: type_definitions,
+          type_extensions: type_extensions,
+          schema_declaration: schema_declaration
+        } <-
           schema_definitions do
       {type_definitions, type_extensions} =
         apply_type_extensions(type_definitions, type_extensions, [])
 
+      {[schema_declaration], type_extensions} =
+        apply_type_extensions([schema_declaration], type_extensions, [])
+
+      # Operation types added by a schema extension become roots as well
+      type_definitions = ApplyDeclaration.mark_roots(type_definitions, schema_declaration)
+
       %{
         schema_def
-        | type_definitions: type_definitions,
+        | schema_declaration: schema_declaration,
+          type_definitions: type_definitions,
           type_extensions: type_extensions
       }
     end
@@ -121,6 +133,21 @@ defmodule Absinthe.Phase.Schema.ApplyTypeExtensions do
      %{
        definition
        | values: definition.values ++ extension.definition.values,
+         directives: definition.directives ++ extension.definition.directives
+     }}
+  end
+
+  defp apply_extension(
+         %Schema.TypeExtensionDefinition{
+           definition: %Schema.SchemaDeclaration{}
+         } = extension,
+         %Schema.SchemaDeclaration{} = definition
+       ) do
+    {extension,
+     %{
+       definition
+       | field_definitions:
+           definition.field_definitions ++ extension.definition.field_definitions,
          directives: definition.directives ++ extension.definition.directives
      }}
   end
